@@ -48,7 +48,7 @@ def sell(n, s, msg_queue, pol, host, port):
     buyerInterested = False
     if pol == "scrooge":
         print("Going to market")
-        market(host, port, n, s)
+        market(host, port, n, s, "sell")
     else:
         try:
             m, t = msg_queue.receive(False, type=1)
@@ -61,7 +61,7 @@ def sell(n, s, msg_queue, pol, host, port):
                 print(   "No buyer for now. Going back to main channel")
             if pol == "normal":
                 print("   No buyer. Going to market")
-                market(host, port, n, s)
+                market(host, port, n, s, "sell")
         if buyerInterested==True:
             try:
                 new_mq = sysv_ipc.MessageQueue(newKey)
@@ -96,10 +96,10 @@ def buy(n, s, msg_queue, k, host, port):
         #print(e)
         if(checkQueueExistence(k)):
             new_mq.remove()
-        market(host, port, n, s)
+        market(host, port, n, s, "buy")
 
 
-def market(host, port, n, s):
+def market(host, port, n, s, tradeType):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         try: 
             client_socket.connect((host, port))
@@ -107,7 +107,7 @@ def market(host, port, n, s):
             print("   Connection to market refused.")
             return 0
         print("   Trading " + str(n-s[0]))
-        data = str(n-s[0])
+        data = tradeType + " " + str(n-s[0])
         client_socket.send(data.encode())
         resp = client_socket.recv(1024)
         if not len(resp):
