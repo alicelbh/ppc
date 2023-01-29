@@ -12,30 +12,44 @@ import concurrent.futures
 
 def socket_handler(s, a , lockPrice_wrt, lockPrice_read, lockGain):
     with s:
+        global serve
         print("")
         print("Connected to client: ", a)
         data = s.recv(1024)
-        m = float(data.decode())       
-        lockPrice_read.acquire()
-        read_count.value += 1
-        if (read_count.value == 1):
-            lockPrice_wrt.acquire()
-        lockPrice_read.release()
-        lockGain.acquire()
-        print("current energy balance: " + str(energyGain.value))
-        print("impending balance modification: " + str(m))
-        energyGain.value = energyGain.value + m
-        print ("new balance: " + str(energyGain.value))
-        lockGain.release()
-        message = "this transaction costed you: " +"$" + str(m*energyPrice.value)
-        #print(message)
-        lockPrice_read.acquire()
-        read_count.value -= 1
-        if (read_count.value == 0):
-            lockPrice_wrt.release()
-        lockPrice_read.release()
-        resp = message
-        s.send(resp.encode())
+        msg = data.decode()
+        if(msg == "STOP"):
+            serve = False
+        else:
+            text = msg.split()
+            status = text[0]
+            m = float(text[1])
+            if (status == "buy"):
+                m = -m    
+            lockPrice_read.acquire()
+            read_count.value += 1
+            if (read_count.value == 1):
+                lockPrice_wrt.acquire()
+            lockPrice_read.release()
+            lockGain.acquire()
+            print("current energy balance: " + str(-energyGain.value))
+            print("impending balance modification: " + str(m))
+            energyGain.value = energyGain.value - m #we use a minus so that the price increases with the scarcity of energy
+            print ("new balance: " + str(-energyGain.value))
+            lockGain.release()
+            if (status == "buy"):
+                outcome = "cost"
+            else:
+                outcome = "yielded"
+
+            message = "this transaction " + outcome +" you: " +"$" + str(abs(m)*energyPrice.value)
+            #print(message)
+            lockPrice_read.acquire()
+            read_count.value -= 1
+            if (read_count.value == 0):
+                lockPrice_wrt.release()
+            lockPrice_read.release()
+            resp = message
+            s.send(resp.encode())
         print("Disconnecting from client: ", a)
         
 
@@ -83,11 +97,12 @@ def transactionHandler(lockPrice_wrt,lockPrice_read, lockGain):
         print("socket online")
         server_socket.listen(n)
         with concurrent.futures.ThreadPoolExecutor(max_workers = n) as executor:
-            while True:
+            while serve:
                 readable, writable, error = select.select([server_socket], [], [], 1)
                 if server_socket in readable:
                     client_socket, address = server_socket.accept()
                     executor.submit(socket_handler, client_socket, address, lockPrice_wrt, lockPrice_read, lockGain, )
+    #os.kill(os.getppid(), signal.SIGKILL)
 
 def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFactors, lockPrice_wrt, lockTemperature, lockExternal, lockGain):
     while True:
@@ -124,6 +139,7 @@ def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFac
 
         
 if __name__ == "__main__":
+    serve = True
     os.system('clear')
     signal.signal(signal.SIGUSR1, handler)
     signal.signal(signal.SIGUSR2, handler)
@@ -151,4 +167,4 @@ if __name__ == "__main__":
     priceCalculator.start()
     external = Process(target=externalFunction, args=())
     external.start()
-    external.join()
+    transaction.join()
