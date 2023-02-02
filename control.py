@@ -2,17 +2,12 @@ import sysv_ipc
 import sys, os, signal
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton
 import subprocess
-
-try:
-    mq = sysv_ipc.MessageQueue(128, sysv_ipc.IPC_CREX)
-    print("Successfully started queue 128")
-except:
-    print("Message queue", 128, "already exsits, terminating.")
-    sys.exit(1)
-
-market = subprocess.Popen(['python3','market2.py'], stdout=sys.stdout)
+import socket
+import time
 
 
+host = "localhost"
+port = 1790 
 
 def window():
     app = QApplication(sys.argv)
@@ -34,11 +29,30 @@ def killSimulation():
         try:
             mq = sysv_ipc.MessageQueue(i)
             mq.remove()
-            print("Queue ", i, " has been removed")
+            print("/!\/!\Queue ", i, " has been removed")
         except:
-            #print(i, " doesn't exist")
             pass
-    print("Terminating simulation")
-    os.killpg(os.getpgid(market.pid), signal.SIGTERM)
+    time.sleep(1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        try: 
+            client_socket.connect((host, port))
+            print("/!\/!\Control panel connected to server")
+        except:
+            print("/!\/!\Couldn't connect to server.")
+        msg = "STOP"
+        client_socket.send(msg.encode())
+    print("/!\/!\Terminating simulation")
+    sys.exit(1)
 
-window()
+if __name__=="__main__":
+    try:
+        mq = sysv_ipc.MessageQueue(128, sysv_ipc.IPC_CREX)
+        print("/!\/!\Successfully started queue 128")
+    except:
+        print("/!\/!\Message queue", 128, "already exsits, terminating.")
+        os._exit(1)
+    
+    market = subprocess.Popen(['python3','market.py'], stdout=sys.stdout) 
+    time.sleep(1)
+   
+    window()
