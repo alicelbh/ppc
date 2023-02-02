@@ -1,9 +1,4 @@
 # ppc
 PPC project, 3TC
 
-To launch a house : 
-  python3 house.py 1 100 33 y
--> gives a house that produces electricity every 1 second, consumes electricity every 100 seconds, has a private message queue using the key 33 and is the first house created)
-  
-  python3 house.py 10 8 90 n
--> same as before but this is not the first house created
+To launch the simulation, you need to start by running the control.py script. It handles the creation of the main message queue and of the market. Then, to add a house, you need to run “house.py prod_speed cons_speed private_key policy” in the terminal. The private key has to be below 200 (simply a convention to avoid having to check the existence of too many queues when ending the simulation) and the policy has to be either “scrooge”, “normal” or “generous”. You can add more houses by running the same command using different startup arguments in other terminals. To end the simulation, you only need to click on the button.
