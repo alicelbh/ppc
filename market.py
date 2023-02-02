@@ -8,15 +8,29 @@ import random
 import socket
 import select
 import concurrent.futures
+from multiprocessing import set_start_method
+set_start_method("fork")
+
+class colors:
+    MAGENTA = '\033[95m'
+    YELLOW = '\033[93;1m'
+    CYAN = '\033[96m'
+    GREEN= '\033[92m'
+    RED = '\033[91m'
+    WARNING = '\033[93m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 
 def socket_handler(s, a , lockPrice_wrt, lockPrice_read, lockGain):
     with s:
         global serve
         print("")
-        print("Connected to client: ", a)
+        print(colors.MAGENTA + "Connected to client: " + str(a) + colors.ENDC)
         data = s.recv(1024)
         msg = data.decode()
+        print("   " + msg)
         if(msg == "STOP"):
             serve = False
         else:
@@ -31,10 +45,10 @@ def socket_handler(s, a , lockPrice_wrt, lockPrice_read, lockGain):
                 lockPrice_wrt.acquire()
             lockPrice_read.release()
             lockGain.acquire()
-            print("current energy balance: " + str(-energyGain.value))
-            print("impending balance modification: " + str(m))
+            print("   Current energy balance: " + str(-energyGain.value))
+            print("   Impending balance modification: " + str(m))
             energyGain.value = energyGain.value - m #we use a minus so that the price increases with the scarcity of energy
-            print ("new balance: " + str(-energyGain.value))
+            print ("   New balance: " + str(-energyGain.value))
             lockGain.release()
             if (status == "buy"):
                 outcome = "cost"
@@ -50,7 +64,7 @@ def socket_handler(s, a , lockPrice_wrt, lockPrice_read, lockGain):
             lockPrice_read.release()
             resp = message
             s.send(resp.encode())
-        print("Disconnecting from client: ", a)
+        print("   Disconnecting from client: ", a)
         
 
 
@@ -60,25 +74,31 @@ def weatherFunction(lockTemperature):
         time.sleep(1)
         lockTemperature.acquire()
         temperature.value = temperature.value + i
-        inverseTemperature.value = 1/temperature.value
+        if(temperature.value!=0):
+            inverseTemperature.value = 1/temperature.value
         lockTemperature.release()
 def handler(sig, frame):
     lockExternal.acquire()
     match sig:
         case signal.SIGUSR1:
             if (externalFactors[0][1]==0):
-                print("début " + externalFactors[0][0])
+                print(colors.BOLD + "Start of " + externalFactors[0][0] + colors.ENDC)
                 externalFactors[0][1] = 1
             else:
-                print ("fin " + externalFactors[0][0])
+                print (colors.BOLD + "End of " + externalFactors[0][0] + colors.ENDC)
                 externalFactors[0][1] = 0
         case signal.SIGUSR2:
             if (externalFactors[1][1]==0):
-                print("début " + externalFactors[1][0])
+                print(colors.BOLD + "Start of " + externalFactors[1][0] + colors.ENDC)
                 externalFactors[1][1] = 1
             else:
-                print ("fin " + externalFactors[1][0])
+                print (colors.BOLD + "End of " + externalFactors[1][0] + colors.ENDC)
                 externalFactors[1][1] = 0
+        case signal.SIGTERM:
+            os.kill(weather.pid, signal.SIGKILL)
+            os.kill(external.pid, signal.SIGKILL)
+            print(colors.RED + "Children terminated." + colors.ENDC)
+            os.kill(os.getpid(), signal.SIGKILL)
         case _:
             print("unknown signal")
     lockExternal.release()
@@ -91,37 +111,41 @@ def externalFunction():
 
 def transactionHandler(lockPrice_wrt,lockPrice_read, lockGain):
     n = 6
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-        server_socket.setblocking(False)
-        server_socket.bind((HOST, PORT))
-        print("socket online")
-        server_socket.listen(n)
-        with concurrent.futures.ThreadPoolExecutor(max_workers = n) as executor:
-            while serve:
-                readable, writable, error = select.select([server_socket], [], [], 1)
-                if server_socket in readable:
-                    client_socket, address = server_socket.accept()
-                    executor.submit(socket_handler, client_socket, address, lockPrice_wrt, lockPrice_read, lockGain, )
-    #os.kill(os.getppid(), signal.SIGKILL)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.setblocking(False)
+            server_socket.bind((HOST, PORT))
+            print(colors.BOLD + "Socket online" + colors.ENDC)
+            server_socket.listen(n)
+            with concurrent.futures.ThreadPoolExecutor(max_workers = n) as executor:
+                while serve:
+                    readable, writable, error = select.select([server_socket], [], [], 1)
+                    if server_socket in readable:
+                        client_socket, address = server_socket.accept()
+                        executor.submit(socket_handler, client_socket, address, lockPrice_wrt, lockPrice_read, lockGain, )
+        os.kill(os.getpid(), signal.SIGTERM)
+    except:
+        print("Port is not ready yet")
+        os.kill(os.getpid(), signal.SIGTERM)
 
 def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFactors, lockPrice_wrt, lockTemperature, lockExternal, lockGain):
     while True:
         time.sleep(10)
-        os.system('clear')
-        print("***\nRecomputing EnergyPrice\n***")
+        #os.system('clear')
+        print(colors.YELLOW + "***\nRecomputing energy price\n***" + colors.ENDC)
         lockPrice_wrt.acquire()
         lockTemperature.acquire()
         lockExternal.acquire()
         lockGain.acquire()
         sumInternal = 0
         sumExternal = 0
-        print("temperature: " + str(temperature.value))
+        print("   Temperature: " + str(temperature.value))
         #print("inverse temperature: " + str(inverseTemperature.value))
-        print("net sum of energy gained through transactions: " + str(energyGain.value))
-        print("current external events:")
+        print("   Net sum of energy gained through transactions: " + str(energyGain.value))
+        print("   Current external events:")
         for i in externalFactors:
             if (i[1] == 1):
-                print(i[0])
+                print("   " + i[0])
 
         for x in internalFactors:
             sumInternal += x[0].value*x[1]
@@ -129,7 +153,7 @@ def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFac
             sumExternal =+ x[1]*x[2]
 
         energyPrice.value = attenuationCoefficient*energyPrice.value +sumInternal + sumExternal
-        print("new energy price: " + str(energyPrice.value))
+        print(colors.RED + "   New energy price: " + str(energyPrice.value) + colors.ENDC)
         energyGain.value = 0
         lockPrice_wrt.release()
         lockTemperature.release()
@@ -140,9 +164,10 @@ def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFac
         
 if __name__ == "__main__":
     serve = True
-    os.system('clear')
+    #os.system('clear')
     signal.signal(signal.SIGUSR1, handler)
     signal.signal(signal.SIGUSR2, handler)
+    signal.signal(signal.SIGTERM, handler)
     lockPrice_wrt  = threading.Lock()
     lockPrice_read = threading.Lock()
     lockTemperature = threading.Lock()
@@ -154,7 +179,7 @@ if __name__ == "__main__":
     read_count = Value('d', 0)
     inverseTemperature = Value('f', temperature.value)
     attenuationCoefficient = 0.99
-    internalFactors = [[inverseTemperature , 0.001],[energyGain,0.00001]]
+    internalFactors = [[inverseTemperature , 0.001],[energyGain,0.000001]]
     externalFactors = [["infrastructures endommagées",0, 0.001],["taxe sur l'énergie", 0, 0.001]]
     HOST = "localhost"
     PORT = 1790
@@ -168,3 +193,6 @@ if __name__ == "__main__":
     external = Process(target=externalFunction, args=())
     external.start()
     transaction.join()
+    external.join()
+    weather.join()
+    priceCalculator.join()
