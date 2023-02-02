@@ -26,6 +26,9 @@ class colors:
 def socket_handler(s, a , lockPrice_wrt, lockPrice_read, lockGain):
     with s:
         global serve
+        global energyGain
+        global energyPrice
+        global read_count
         print("")
         print(colors.MAGENTA + "Connected to client: " + str(a) + colors.ENDC)
         data = s.recv(1024)
@@ -40,26 +43,26 @@ def socket_handler(s, a , lockPrice_wrt, lockPrice_read, lockGain):
             if (status == "buy"):
                 m = -m    
             lockPrice_read.acquire()
-            read_count.value += 1
-            if (read_count.value == 1):
+            read_count += 1
+            if (read_count == 1):
                 lockPrice_wrt.acquire()
             lockPrice_read.release()
             lockGain.acquire()
-            print("   Current energy balance: " + str(-energyGain.value))
+            print("   Current energy balance: " + str(energyGain))
             print("   Impending balance modification: " + str(m))
-            energyGain.value = energyGain.value - m #we use a minus so that the price increases with the scarcity of energy
-            print ("   New balance: " + str(-energyGain.value))
+            energyGain = energyGain + m 
+            print ("   New balance: " + str(energyGain))
             lockGain.release()
             if (status == "buy"):
                 outcome = "cost"
             else:
                 outcome = "yielded"
 
-            message = "this transaction " + outcome +" you: " +"$" + str(abs(m)*energyPrice.value)
+            message = "this transaction " + outcome +" you: " +"$" + str(abs(m)*energyPrice)
             #print(message)
             lockPrice_read.acquire()
-            read_count.value -= 1
-            if (read_count.value == 0):
+            read_count -= 1
+            if (read_count == 0):
                 lockPrice_wrt.release()
             lockPrice_read.release()
             resp = message
@@ -74,8 +77,6 @@ def weatherFunction(lockTemperature):
         time.sleep(1)
         lockTemperature.acquire()
         temperature.value = temperature.value + i
-        if(temperature.value!=0):
-            inverseTemperature.value = 1/temperature.value
         lockTemperature.release()
 def handler(sig, frame):
     lockExternal.acquire()
@@ -130,6 +131,8 @@ def transactionHandler(lockPrice_wrt,lockPrice_read, lockGain):
 
 def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFactors, lockPrice_wrt, lockTemperature, lockExternal, lockGain):
     while True:
+        global energyGain
+        global energyPrice
         time.sleep(10)
         #os.system('clear')
         print(colors.YELLOW + "***\nRecomputing energy price\n***" + colors.ENDC)
@@ -139,22 +142,24 @@ def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFac
         lockGain.acquire()
         sumInternal = 0
         sumExternal = 0
+        if(temperature.value!=0):
+            internalFactors[0][0] = 1/temperature.value
+        internalFactors[1][0] = -energyGain
         print("   Temperature: " + str(temperature.value))
-        #print("inverse temperature: " + str(inverseTemperature.value))
-        print("   Net sum of energy gained through transactions: " + str(energyGain.value))
+        print("   Net sum of energy gained through transactions: " + str(energyGain))
         print("   Current external events:")
         for i in externalFactors:
             if (i[1] == 1):
                 print("   " + i[0])
 
         for x in internalFactors:
-            sumInternal += x[0].value*x[1]
+            sumInternal += x[0]*x[1]
         for x in externalFactors:
             sumExternal =+ x[1]*x[2]
 
-        energyPrice.value = attenuationCoefficient*energyPrice.value +sumInternal + sumExternal
-        print(colors.RED + "   New energy price: " + str(energyPrice.value) + colors.ENDC)
-        energyGain.value = 0
+        energyPrice = attenuationCoefficient*energyPrice +sumInternal + sumExternal
+        print(colors.RED + "   New energy price: " + str(energyPrice) + colors.ENDC)
+        energyGain = 0
         lockPrice_wrt.release()
         lockTemperature.release()
         lockExternal.release()
@@ -163,6 +168,7 @@ def priceCalculatorFunction(attenuationCoefficient, internalFactors, externalFac
 
         
 if __name__ == "__main__":
+    global serve
     serve = True
     #os.system('clear')
     signal.signal(signal.SIGUSR1, handler)
@@ -173,16 +179,20 @@ if __name__ == "__main__":
     lockTemperature = threading.Lock()
     lockExternal = threading.Lock()
     lockGain = threading.Lock()
-    energyGain = Value('f', 0)
-    energyPrice = Value('f',0.1464)
+    global energyGain
+    energyGain = 0
+    global energyPrice
+    energyPrice = 0.1464
     temperature = Value('f', 25)
-    read_count = Value('d', 0)
-    inverseTemperature = Value('f', temperature.value)
+    global read_count
+    read_count = 0
+    global inverseTemperature
+    inverseTemperature = 1/temperature.value
     attenuationCoefficient = 0.99
     internalFactors = [[inverseTemperature , 0.001],[energyGain,0.000001]]
-    externalFactors = [["infrastructures endommagées",0, 0.001],["taxe sur l'énergie", 0, 0.001]]
+    externalFactors = [["Damaged infrastructures",0, 0.001],["Energy tax", 0, 0.001]]
     HOST = "localhost"
-    PORT = 1790
+    PORT = 1791
     
     weather = Process(target=weatherFunction, args=(lockTemperature,))
     weather.start()
